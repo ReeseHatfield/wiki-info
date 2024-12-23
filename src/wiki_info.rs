@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use scraper::{Html, Selector};
 
+mod stop_words;
+
 // singleton module wrapper
 mod client {
     use lazy_static::lazy_static;
@@ -48,7 +50,7 @@ mod client {
 pub fn page_from_title(title: &str) -> Result<Page, Box<dyn std::error::Error>> {
     println!("parse_parse_from_title called...");
 
-    let url = url_utils::resolve_wiki_url(title).unwrap(); // TODO remove unwrap
+    let url = url_utils::resolve_wiki_url(title)?;
 
     return page_from_url(&url);
 }
@@ -223,7 +225,12 @@ fn clean_meta_content(input: &str) -> String {
     final_text
 }
 
-pub fn clean_document(page: &Page, stop_words: &Vec<String>) -> String {
+// removes non-semantic indicators from document
+pub fn clean_document(page: &Page) -> String {
+
+
+    let stop_words: Vec<String> = STOP_WORDS.to_vec();
+
     println!("Cleaning document...");
     let mut results: String = String::new();
 
@@ -232,7 +239,9 @@ pub fn clean_document(page: &Page, stop_words: &Vec<String>) -> String {
         .map(|word| word.trim())
         .filter(|word| word.is_ascii())
         .filter(|word| word.chars().all(|c| c.is_alphabetic()))
-        .filter(|&word| !stop_words.contains(&word.to_string()))
+        .map(|word| word.to_ascii_lowercase())
+        // .inspect(|word| println!("current word: {:?}", word))
+        .filter(|word| !stop_words.contains(&word.to_string()))
         .map(|word| word.to_ascii_lowercase())
         .for_each(|word| {
             results.push_str(&word);
@@ -243,9 +252,11 @@ pub fn clean_document(page: &Page, stop_words: &Vec<String>) -> String {
     results
 }
 
-pub fn page_to_vec(page: &Page, stop_words: &Vec<String>) -> Vec<f64> {
+pub fn page_to_vec(page: &Page) -> Vec<f64> {
+
+
     println!("Converting page to vector...");
-    let content = clean_document(page, &stop_words);
+    let content = clean_document(page);
 
     let content_vec: Vec<&str> = content.split_whitespace().collect();
 
@@ -267,6 +278,7 @@ pub fn page_to_vec(page: &Page, stop_words: &Vec<String>) -> Vec<f64> {
 }
 
 use rayon::prelude::*;
+use stop_words::STOP_WORDS;
 
 fn cosine_sim(vec1: &Vec<f64>, vec2: &Vec<f64>) -> f64 {
     let dot_product: f64 = vec1
@@ -282,10 +294,8 @@ fn cosine_sim(vec1: &Vec<f64>, vec2: &Vec<f64>) -> f64 {
 }
 
 pub fn get_page_similarity(page1: &Page, page2: &Page) -> f64 {
-    let stop_words = stop_words::get(stop_words::LANGUAGE::English);
-
-    let vec1 = page_to_vec(page1, &stop_words);
-    let vec2 = page_to_vec(page2, &stop_words);
+    let vec1 = page_to_vec(page1);
+    let vec2 = page_to_vec(page2);
 
     return cosine_sim(&vec1, &vec2);
 }
@@ -295,15 +305,13 @@ pub fn get_page_similarity(page1: &Page, page2: &Page) -> f64 {
 pub fn get_most_similar_page(primary_page: &Page, pages: &Vec<Page>) -> usize {
     // i kinda see why sklearn has this take 2 vectors and return 1 similarity vector now lol
 
-    let stop_words = stop_words::get(stop_words::LANGUAGE::English);
-
-    let primary_vec = page_to_vec(&primary_page, &stop_words);
+    let primary_vec = page_to_vec(&primary_page);
 
     let mut most_similar_index: usize = 0;
     let mut best_similarity: f64 = 0.0;
 
     for page_index in 0..pages.len() {
-        let cur_sim = cosine_sim(&primary_vec, &page_to_vec(&pages[page_index], &stop_words));
+        let cur_sim = cosine_sim(&primary_vec, &page_to_vec(&pages[page_index]));
 
         if cur_sim > best_similarity {
             best_similarity = cur_sim;
