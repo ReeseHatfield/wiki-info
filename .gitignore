@@ -1,0 +1,11 @@
+
+Summary
+.gitignore for executable crates
+
+# Generated files
+/target/
+
+.gitignore for library crates
+
+# Generated files
+/target/
