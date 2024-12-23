@@ -1774,10 +1774,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "wiki-test"
+name = "wiki-info"
 version = "0.1.0"
 dependencies = [
  "lazy_static",
+ "percent-encoding",
  "rayon",
  "regex",
  "reqwest",

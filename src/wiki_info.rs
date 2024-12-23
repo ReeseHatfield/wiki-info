@@ -48,11 +48,9 @@ mod client {
 pub fn page_from_title(title: &str) -> Result<Page, Box<dyn std::error::Error>> {
     println!("parse_parse_from_title called...");
 
-    let cleaned = title.replace(" ", "_");
-    let url_peice = cleaned.as_str();
+    let url = url_utils::resolve_wiki_url(title).unwrap(); // TODO remove unwrap
 
-    return page_from_url(&("https://en.wikipedia.org/wiki/".to_owned() + &url_peice));
-    
+    return page_from_url(&url);
 }
 
 pub fn page_from_url(url: &str) -> Result<Page, Box<dyn std::error::Error>> {
@@ -81,27 +79,58 @@ pub fn page_from_url(url: &str) -> Result<Page, Box<dyn std::error::Error>> {
     match document.select(&selector).next() {
         Some(content) => {
             println!("Content successfully selected. Processing content...");
-        
-            let title = extract_slug(url).split("_").fold(String::new(), |a, b| a + b + " ");
+
+            let title = url_utils::extract_slug(url)
+                .split("_")
+                .fold(String::new(), |a, b| a + b + " ");
 
             Ok(process_content(content, &title))
         }
-        None => { 
+        None => {
             println!("Failed to select content from document.");
             Err("Could not process content".to_string().into())
         }
     }
 }
 
-// util for title extraction
-fn extract_slug(url: &str) -> &str {
-    
-    // last elem
-    match url.rsplit('/').next() {
-        Some(slug) => slug,
-        None => ""
+pub mod url_utils {
+    use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+    use reqwest::{blocking::Client, header::LOCATION};
+    use std::sync::Arc;
+
+    use super::client::get_client;
+
+    // util for title extraction
+    pub fn extract_slug(url: &str) -> &str {
+        // last elem
+        match url.rsplit('/').next() {
+            Some(slug) => slug,
+            None => "",
+        }
+    }
+
+    pub fn resolve_wiki_url(title: &str) -> Result<String, Box<dyn std::error::Error>> {
+        let client: Arc<Client> = get_client();
+
+        // wiki links have dumb special character to handle 
+        let encoded_title = utf8_percent_encode(title, NON_ALPHANUMERIC).to_string();
+        let url = format!("https://en.wikipedia.org/wiki/{}", encoded_title);
+
+        match client.get(&url).send() {
+            Ok(res) if res.status().is_redirection() => {
+                res.headers()
+                    .get(LOCATION)
+                    .and_then(|redirect_url| redirect_url.to_str().ok())
+                    .map(|redirect_str| redirect_str.to_owned())
+                    .ok_or_else(|| "Could not resolve url".into())
+                    // this is just like s js promise chain
+            }
+            Ok(res) => Ok(res.url().as_str().to_owned()), 
+            Err(_) => Err("Could not process content".into()), 
+        }
     }
 }
+
 fn handle_response(
     response: reqwest::blocking::Response,
 ) -> Result<String, Box<dyn std::error::Error>> {
@@ -252,15 +281,23 @@ fn cosine_sim(vec1: &Vec<f64>, vec2: &Vec<f64>) -> f64 {
     return dot_product / (magnitude1 * magnitude2);
 }
 
+pub fn get_page_similarity(page1: &Page, page2: &Page) -> f64 {
+    let stop_words = stop_words::get(stop_words::LANGUAGE::English);
+
+    let vec1 = page_to_vec(page1, &stop_words);
+    let vec2 = page_to_vec(page2, &stop_words);
+
+    return cosine_sim(&vec1, &vec2);
+}
+
 // argmax = index dont forget that
-// ARGMAX 
+// ARGMAX
 pub fn get_most_similar_page(primary_page: &Page, pages: &Vec<Page>) -> usize {
     // i kinda see why sklearn has this take 2 vectors and return 1 similarity vector now lol
 
     let stop_words = stop_words::get(stop_words::LANGUAGE::English);
 
     let primary_vec = page_to_vec(&primary_page, &stop_words);
-
 
     let mut most_similar_index: usize = 0;
     let mut best_similarity: f64 = 0.0;
