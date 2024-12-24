@@ -1,7 +1,7 @@
 // library functions are not used outside of test
 #![allow(unused)]
 
-mod wiki_info;
+pub mod wiki_info;
 
 // Tests
 #[cfg(test)]
