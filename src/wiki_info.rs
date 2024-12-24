@@ -68,7 +68,6 @@ impl std::fmt::Display for WikiError {
 
 impl std::error::Error for WikiError {}
 
-// need to figure out str vs string for public apis
 pub fn page_from_title(title: &str) -> Result<Page, WikiError> {
     debug!("parse_parse_from_title called...");
 
@@ -194,7 +193,8 @@ pub struct HyperLink {
     pub title: String,
     pub outlink: String,
 }
-pub fn process_content_recursive(
+
+fn process_content_recursive(
     element: scraper::ElementRef,
     raw_content: &mut String,
     links: &mut Vec<HyperLink>,
@@ -325,7 +325,7 @@ pub fn cosine_sim(vec1: &Vec<f64>, vec2: &Vec<f64>) -> f64 {
         .map(|(a, b)| a * b)
         .sum();
 
-    //brrrrrrrrrrrrrrrr
+    //par iter brrrrrrrrrrrrrrrr
     let magnitude1: f64 = vec1.par_iter().map(|x| x.powi(2)).sum::<f64>().sqrt();
     let magnitude2: f64 = vec2.par_iter().map(|x| x.powi(2)).sum::<f64>().sqrt();
     return dot_product / (magnitude1 * magnitude2);
