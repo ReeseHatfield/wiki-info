@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::format};
 
 use scraper::{Html, Selector};
 
@@ -49,8 +49,27 @@ mod client {
 
 use log::debug;
 
+#[derive(Debug)]
+pub enum WikiError {
+    NetworkingError(String),
+    ParseError(String),
+    URLError(String),
+}
+
+impl std::fmt::Display for WikiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NetworkingError(msg) => write!(f, "Networking error: {}", msg),
+            Self::ParseError(msg) => write!(f, "Parse error: {}", msg),
+            Self::URLError(msg) => write!(f, "URL error {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for WikiError {}
+
 // need to figure out str vs string for public apis
-pub fn page_from_title(title: &str) -> Result<Page, Box<dyn std::error::Error>> {
+pub fn page_from_title(title: &str) -> Result<Page, WikiError> {
     debug!("parse_parse_from_title called...");
 
     let url = url_utils::resolve_wiki_url(title)?;
@@ -58,7 +77,7 @@ pub fn page_from_title(title: &str) -> Result<Page, Box<dyn std::error::Error>> 
     return page_from_url(&url);
 }
 
-pub fn page_from_url(url: &str) -> Result<Page, Box<dyn std::error::Error>> {
+pub fn page_from_url(url: &str) -> Result<Page, WikiError> {
     debug!("parse_page_from_url called with url: {}", url);
     let client = client::get_client();
 
@@ -70,7 +89,10 @@ pub fn page_from_url(url: &str) -> Result<Page, Box<dyn std::error::Error>> {
             "User-Agent",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         )
-        .send()?;
+        .send()
+        .map_err(|err| WikiError::NetworkingError( // into wiki error
+            format!("Request error with status {:?}",  err.status()))
+        )?;
 
     debug!("Response received from URL: {}", url);
     let html_content = handle_response(response)?;
@@ -86,12 +108,14 @@ pub fn page_from_url(url: &str) -> Result<Page, Box<dyn std::error::Error>> {
             debug!("Content successfully selected. Processing content...");
 
             let title = url_utils::title_from_url(url);
-            
+
             Ok(process_content(content, &title))
         }
         None => {
             debug!("Failed to select content from document.");
-            Err("Could not process content".to_string().into())
+            Err(WikiError::ParseError(
+                "Failed to select content from document.".to_owned(),
+            ))
         }
     }
 }
@@ -101,7 +125,7 @@ pub mod url_utils {
     use reqwest::{blocking::Client, header::LOCATION};
     use std::sync::Arc;
 
-    use super::client::get_client;
+    use super::{client::get_client, WikiError};
 
     pub fn title_from_url(url: &str) -> String {
         let title = extract_slug(url)
@@ -120,38 +144,41 @@ pub mod url_utils {
         }
     }
 
-    pub fn resolve_wiki_url(title: &str) -> Result<String, Box<dyn std::error::Error>> {
+    pub fn resolve_wiki_url(title: &str) -> Result<String, WikiError> {
         let client: Arc<Client> = get_client();
 
-        // wiki links have dumb special character to handle
-        let encoded_title = utf8_percent_encode(title, NON_ALPHANUMERIC).to_string();
-        let url = format!("https://en.wikipedia.org/wiki/{}", encoded_title);
+        let base_url = "https://en.wikipedia.org/wiki/";
+        let slug = title.replace(" ", "_");
+        let url = base_url.to_owned() + &slug;
 
         match client.get(&url).send() {
-            Ok(res) if res.status().is_redirection() => {
-                res.headers()
-                    .get(LOCATION)
-                    .and_then(|redirect_url| redirect_url.to_str().ok())
-                    .map(|redirect_str| redirect_str.to_owned())
-                    .ok_or_else(|| "Could not resolve url".into())
-                // this is just like s js promise chain
+            Ok(response) => {
+                if response.status().is_success() {
+                    Ok(url)
+                } else {
+                    Err(WikiError::NetworkingError(
+                        format!("URL returned status: {}", response.status()).into(),
+                    ))
+                }
             }
-            Ok(res) => Ok(res.url().as_str().to_owned()),
-            Err(_) => Err("Could not process content".into()),
+            Err(e) => Err(WikiError::NetworkingError(
+                "Failed to send request: {}".to_owned(),
+            )),
         }
     }
 }
 
-fn handle_response(
-    response: reqwest::blocking::Response,
-) -> Result<String, Box<dyn std::error::Error>> {
+fn handle_response(response: reqwest::blocking::Response) -> Result<String, WikiError> {
     debug!("Handling response...");
     if response.status().is_success() {
         debug!("Response successful. Extracting text...");
-        Ok(response.text()?)
+
+        Ok(response.text().map_err(|err| {
+            WikiError::NetworkingError("Failed to get text from response".to_owned())
+        })?)
     } else {
         debug!("Response failed with status: {}", response.status());
-        Err(format!("Failed to fetch page: HTTP {}", response.status()).into())
+        Err(WikiError::NetworkingError(format!("Failed to fetch page: HTTP {}", response.status())))
     }
 }
 
@@ -159,10 +186,10 @@ fn handle_response(
 pub struct Page {
     pub title: String,
     pub links: Vec<HyperLink>,
-    pub content: String, // own your strings cuz I hate lifetimes
+    pub content: String
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HyperLink {
     pub title: String,
     pub outlink: String,
@@ -205,7 +232,8 @@ pub fn process_content(element: scraper::ElementRef, page_title: &str) -> Page {
 
     process_content_recursive(element, &mut raw_content, &mut links);
 
-    // clean meta content is actually not a cheap function, only wanna call it once here vs inside the recursive one
+    // clean meta content is actually not a cheap function, 
+    // only wanna call it once here vs inside the recursive one
     let cleaned_content = clean_meta_content(&raw_content);
 
     Page {
@@ -217,7 +245,7 @@ pub fn process_content(element: scraper::ElementRef, page_title: &str) -> Page {
 
 use regex::Regex;
 
-fn clean_meta_content(input: &str) -> String {
+pub fn clean_meta_content(input: &str) -> String {
     debug!("Cleaning meta content...");
     let re_whitespace = Regex::new(r"\s+").unwrap();
     let cleaned_text = re_whitespace.replace_all(input, " ").to_string();
@@ -235,7 +263,7 @@ fn clean_meta_content(input: &str) -> String {
 }
 
 // removes non-semantic indicators from document
-pub fn clean_document(page: &Page) -> String {
+pub fn clean_document(page: &Page) -> Page {
     let stop_words: Vec<String> = STOP_WORDS.to_vec();
 
     debug!("Cleaning document...");
@@ -247,7 +275,7 @@ pub fn clean_document(page: &Page) -> String {
         .filter(|word| word.is_ascii())
         .filter(|word| word.chars().all(|c| c.is_alphabetic()))
         .map(|word| word.to_ascii_lowercase())
-        // .inspect(|word| debug!("current word: {:?}", word))
+        .inspect(|word| debug!("current word: {:?}", word))
         .filter(|word| !stop_words.contains(&word.to_string()))
         .map(|word| word.to_ascii_lowercase())
         .for_each(|word| {
@@ -256,12 +284,17 @@ pub fn clean_document(page: &Page) -> String {
         });
 
     debug!("Document cleaned.");
-    results
+
+    Page {
+        title: page.title.clone(),
+        links: page.links.clone(),
+        content: results,
+    }
 }
 
 pub fn page_to_vec(page: &Page) -> Vec<f64> {
     debug!("Converting page to vector...");
-    let content = clean_document(page);
+    let content = clean_document(page).content;
 
     let content_vec: Vec<&str> = content.split_whitespace().collect();
 
@@ -285,7 +318,7 @@ pub fn page_to_vec(page: &Page) -> Vec<f64> {
 use rayon::prelude::*;
 use stop_words::STOP_WORDS;
 
-fn cosine_sim(vec1: &Vec<f64>, vec2: &Vec<f64>) -> f64 {
+pub fn cosine_sim(vec1: &Vec<f64>, vec2: &Vec<f64>) -> f64 {
     let dot_product: f64 = vec1
         .par_iter()
         .zip(vec2.par_iter())
@@ -305,7 +338,6 @@ pub fn get_page_similarity(page1: &Page, page2: &Page) -> f64 {
     return cosine_sim(&vec1, &vec2);
 }
 
-// argmax = index dont forget that
 // ARGMAX
 pub fn get_most_similar_page(primary_page: &Page, pages: &Vec<Page>) -> usize {
     // i kinda see why sklearn has this take 2 vectors and return 1 similarity vector now lol
