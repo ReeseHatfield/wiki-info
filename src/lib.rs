@@ -92,9 +92,11 @@ mod tests {
 
         println!("Content: {:?}", cleaned);
 
-        assert!(!cleaned.contains("the"), "Should not contain common stop word 'the'");
-        assert!(!cleaned.contains("and"), "Should not contain common stop word 'and'");
-        assert!(!cleaned.contains("a"), "Should not contain common stop word 'a'");
+        let words: Vec<&str> = cleaned.split_whitespace().collect();
+
+        assert!(!words.contains(&"the"), "Should not contain common stop word 'the'");
+        assert!(!words.contains(&"and"), "Should not contain common stop word 'and'");
+        assert!(!words.contains(&"a"), "Should not contain common stop word 'a'");
         
     }
 }

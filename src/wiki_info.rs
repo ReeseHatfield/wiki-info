@@ -7,6 +7,7 @@ mod stop_words;
 // singleton module wrapper
 mod client {
     use lazy_static::lazy_static;
+    use log::debug;
     use reqwest::blocking::Client;
     use std::sync::{Arc, Mutex};
 
@@ -16,7 +17,7 @@ mod client {
 
     impl ClientSingleton {
         fn new() -> Self {
-            println!("Initializing ClientSingleton...");
+            debug!("Initializing ClientSingleton...");
             ClientSingleton {
                 blocking_client: Arc::new(Client::new()),
             }
@@ -24,7 +25,7 @@ mod client {
 
         // private version of this fn
         fn get_client(&self) -> Arc<Client> {
-            println!("Retrieving client from ClientSingleton...");
+            debug!("Retrieving client from ClientSingleton...");
             Arc::clone(&self.blocking_client)
         }
     }
@@ -32,13 +33,13 @@ mod client {
     // lazy static init of singleton
     lazy_static! {
         static ref CLIENT_INSTANCE: Mutex<ClientSingleton> = {
-            println!("Creating CLIENT_INSTANCE...");
+            debug!("Creating CLIENT_INSTANCE...");
             std::sync::Mutex::new(ClientSingleton::new())
         };
     }
 
     pub fn get_client() -> Arc<Client> {
-        println!("Acquiring lock on CLIENT_INSTANCE...");
+        debug!("Acquiring lock on CLIENT_INSTANCE...");
         CLIENT_INSTANCE
             .lock()
             .expect("Failed to acquire lock on ClientSingleton") // ehhhh might wanna fix this
@@ -46,9 +47,11 @@ mod client {
     }
 }
 
+use log::debug;
+
 // need to figure out str vs string for public apis
 pub fn page_from_title(title: &str) -> Result<Page, Box<dyn std::error::Error>> {
-    println!("parse_parse_from_title called...");
+    debug!("parse_parse_from_title called...");
 
     let url = url_utils::resolve_wiki_url(title)?;
 
@@ -56,10 +59,10 @@ pub fn page_from_title(title: &str) -> Result<Page, Box<dyn std::error::Error>> 
 }
 
 pub fn page_from_url(url: &str) -> Result<Page, Box<dyn std::error::Error>> {
-    println!("parse_page_from_url called with url: {}", url);
+    debug!("parse_page_from_url called with url: {}", url);
     let client = client::get_client();
 
-    println!("Sending request to URL: {}", url);
+    debug!("Sending request to URL: {}", url);
     let response = client
         .get(url)
         // lie about user agents lol
@@ -69,10 +72,10 @@ pub fn page_from_url(url: &str) -> Result<Page, Box<dyn std::error::Error>> {
         )
         .send()?;
 
-    println!("Response received from URL: {}", url);
+    debug!("Response received from URL: {}", url);
     let html_content = handle_response(response)?;
 
-    println!("Parsing HTML content...");
+    debug!("Parsing HTML content...");
     let document = Html::parse_document(&html_content);
 
     // this wierd selector is what gets the actual body from a page
@@ -80,16 +83,14 @@ pub fn page_from_url(url: &str) -> Result<Page, Box<dyn std::error::Error>> {
 
     match document.select(&selector).next() {
         Some(content) => {
-            println!("Content successfully selected. Processing content...");
+            debug!("Content successfully selected. Processing content...");
 
-            let title = url_utils::extract_slug(url)
-                .split("_")
-                .fold(String::new(), |a, b| a + b + " ");
-
+            let title = url_utils::title_from_url(url);
+            
             Ok(process_content(content, &title))
         }
         None => {
-            println!("Failed to select content from document.");
+            debug!("Failed to select content from document.");
             Err("Could not process content".to_string().into())
         }
     }
@@ -102,8 +103,16 @@ pub mod url_utils {
 
     use super::client::get_client;
 
+    pub fn title_from_url(url: &str) -> String {
+        let title = extract_slug(url)
+            .split("_")
+            .fold(String::new(), |a, b| a + b + " ");
+
+        return title;
+    }
+
     // util for title extraction
-    pub fn extract_slug(url: &str) -> &str {
+    fn extract_slug(url: &str) -> &str {
         // last elem
         match url.rsplit('/').next() {
             Some(slug) => slug,
@@ -114,7 +123,7 @@ pub mod url_utils {
     pub fn resolve_wiki_url(title: &str) -> Result<String, Box<dyn std::error::Error>> {
         let client: Arc<Client> = get_client();
 
-        // wiki links have dumb special character to handle 
+        // wiki links have dumb special character to handle
         let encoded_title = utf8_percent_encode(title, NON_ALPHANUMERIC).to_string();
         let url = format!("https://en.wikipedia.org/wiki/{}", encoded_title);
 
@@ -125,10 +134,10 @@ pub mod url_utils {
                     .and_then(|redirect_url| redirect_url.to_str().ok())
                     .map(|redirect_str| redirect_str.to_owned())
                     .ok_or_else(|| "Could not resolve url".into())
-                    // this is just like s js promise chain
+                // this is just like s js promise chain
             }
-            Ok(res) => Ok(res.url().as_str().to_owned()), 
-            Err(_) => Err("Could not process content".into()), 
+            Ok(res) => Ok(res.url().as_str().to_owned()),
+            Err(_) => Err("Could not process content".into()),
         }
     }
 }
@@ -136,12 +145,12 @@ pub mod url_utils {
 fn handle_response(
     response: reqwest::blocking::Response,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    println!("Handling response...");
+    debug!("Handling response...");
     if response.status().is_success() {
-        println!("Response successful. Extracting text...");
+        debug!("Response successful. Extracting text...");
         Ok(response.text()?)
     } else {
-        println!("Response failed with status: {}", response.status());
+        debug!("Response failed with status: {}", response.status());
         Err(format!("Failed to fetch page: HTTP {}", response.status()).into())
     }
 }
@@ -190,7 +199,7 @@ pub fn process_content_recursive(
 }
 
 pub fn process_content(element: scraper::ElementRef, page_title: &str) -> Page {
-    println!("Processing content element...");
+    debug!("Processing content element...");
     let mut raw_content = String::new();
     let mut links = Vec::new();
 
@@ -209,7 +218,7 @@ pub fn process_content(element: scraper::ElementRef, page_title: &str) -> Page {
 use regex::Regex;
 
 fn clean_meta_content(input: &str) -> String {
-    println!("Cleaning meta content...");
+    debug!("Cleaning meta content...");
     let re_whitespace = Regex::new(r"\s+").unwrap();
     let cleaned_text = re_whitespace.replace_all(input, " ").to_string();
 
@@ -221,17 +230,15 @@ fn clean_meta_content(input: &str) -> String {
     let re_trim = Regex::new(r"^\s+|\s+$").unwrap();
     let final_text = re_trim.replace_all(&clean_text_no_symbols, "").to_string();
 
-    println!("Meta content cleaned.");
+    debug!("Meta content cleaned.");
     final_text
 }
 
 // removes non-semantic indicators from document
 pub fn clean_document(page: &Page) -> String {
-
-
     let stop_words: Vec<String> = STOP_WORDS.to_vec();
 
-    println!("Cleaning document...");
+    debug!("Cleaning document...");
     let mut results: String = String::new();
 
     page.content
@@ -240,7 +247,7 @@ pub fn clean_document(page: &Page) -> String {
         .filter(|word| word.is_ascii())
         .filter(|word| word.chars().all(|c| c.is_alphabetic()))
         .map(|word| word.to_ascii_lowercase())
-        // .inspect(|word| println!("current word: {:?}", word))
+        // .inspect(|word| debug!("current word: {:?}", word))
         .filter(|word| !stop_words.contains(&word.to_string()))
         .map(|word| word.to_ascii_lowercase())
         .for_each(|word| {
@@ -248,14 +255,12 @@ pub fn clean_document(page: &Page) -> String {
             results.push_str(" ");
         });
 
-    println!("Document cleaned.");
+    debug!("Document cleaned.");
     results
 }
 
 pub fn page_to_vec(page: &Page) -> Vec<f64> {
-
-
-    println!("Converting page to vector...");
+    debug!("Converting page to vector...");
     let content = clean_document(page);
 
     let content_vec: Vec<&str> = content.split_whitespace().collect();
@@ -273,7 +278,7 @@ pub fn page_to_vec(page: &Page) -> Vec<f64> {
         }
     }
 
-    println!("Page converted to vector.");
+    debug!("Page converted to vector.");
     term_frequencies
 }
 
