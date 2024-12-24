@@ -291,6 +291,7 @@ pub fn clean_document(page: &Page) -> Page {
     }
 }
 
+
 pub fn page_to_vec(page: &Page) -> Vec<f64> {
     debug!("Converting page to vector...");
     let content = clean_document(page).content;
@@ -317,6 +318,16 @@ pub fn page_to_vec(page: &Page) -> Vec<f64> {
 use rayon::prelude::*;
 use stop_words::STOP_WORDS;
 
+/// The cosine similarity between two vectors
+/// 
+/// # Arguments
+/// 
+/// * `vec1` - The first vector
+/// * `vec2` - The second vector
+/// 
+/// # Returns
+/// 
+/// the cosine of the angle between the vectors -> [0-1)
 pub fn cosine_sim(vec1: &Vec<f64>, vec2: &Vec<f64>) -> f64 {
     let dot_product: f64 = vec1
         .par_iter()
@@ -330,6 +341,16 @@ pub fn cosine_sim(vec1: &Vec<f64>, vec2: &Vec<f64>) -> f64 {
     return dot_product / (magnitude1 * magnitude2);
 }
 
+/// Get the similarity of two pages
+/// 
+/// # Arguments
+/// 
+/// * `page1` - The first page to check
+/// * `page2` - The second page to check
+/// 
+/// # Returns
+/// 
+/// The document similarity [0-1)
 pub fn get_page_similarity(page1: &Page, page2: &Page) -> f64 {
     let vec1 = page_to_vec(page1);
     let vec2 = page_to_vec(page2);
@@ -337,7 +358,16 @@ pub fn get_page_similarity(page1: &Page, page2: &Page) -> f64 {
     return cosine_sim(&vec1, &vec2);
 }
 
-// ARGMAX
+/// Get the most similar page from a set of pages
+///
+/// # Arguments
+///
+/// * `primary_page` - The page to check for similarity to
+/// * `pages` - The set of pages to check against
+///
+/// # Returns
+///
+/// The ARGMAX of the most similar page 
 pub fn get_most_similar_page(primary_page: &Page, pages: &Vec<Page>) -> usize {
     // i kinda see why sklearn has this take 2 vectors and return 1 similarity vector now lol
 
