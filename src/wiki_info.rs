@@ -261,7 +261,15 @@ pub fn clean_meta_content(input: &str) -> String {
     final_text
 }
 
-// removes non-semantic indicators from document
+/// Removes non-semantic indicators from document
+/// 
+/// # Arguments
+/// 
+/// * `page` - page to clean
+/// 
+/// # Returns
+/// 
+/// A new, owned clean page with no non-semantic indicators
 pub fn clean_document(page: &Page) -> Page {
     let stop_words: Vec<String> = STOP_WORDS.to_vec();
 
@@ -291,7 +299,16 @@ pub fn clean_document(page: &Page) -> Page {
     }
 }
 
-
+/// Convert a Page into its vector representation in a word embeddding vector space
+/// 
+/// # Arguments
+/// 
+/// * `page` - The page to convert
+/// 
+/// # Returns
+/// 
+/// An owned vector of floats containing ONLY the term-frequencies values
+/// This notably does not contain the IDF information
 pub fn page_to_vec(page: &Page) -> Vec<f64> {
     debug!("Converting page to vector...");
     let content = clean_document(page).content;
