@@ -120,7 +120,6 @@ pub fn page_from_url(url: &str) -> Result<Page, WikiError> {
 }
 
 pub mod url_utils {
-    use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
     use reqwest::{blocking::Client, header::LOCATION};
     use std::sync::Arc;
 
