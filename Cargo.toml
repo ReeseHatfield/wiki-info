@@ -1,6 +1,6 @@
 [package]
 name = "wiki-info"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Reese Hatfield hatfield.69@wright.edu"]
 edition = "2021"
 description = "A high-speed, blocking, information retrieval API for rust"
