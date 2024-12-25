@@ -4,7 +4,8 @@ use scraper::{Html, Selector};
 
 mod stop_words;
 
-// singleton module wrapper
+/// Singleton module for networking clients. 
+/// This is a *blocking* library, should never have race condition on networking side 
 mod client {
     use lazy_static::lazy_static;
     use log::debug;
@@ -38,6 +39,7 @@ mod client {
         };
     }
 
+    /// Get a singleton client instance
     pub fn get_client() -> Arc<Client> {
         debug!("Acquiring lock on CLIENT_INSTANCE...");
         CLIENT_INSTANCE
@@ -49,6 +51,8 @@ mod client {
 
 use log::debug;
 
+/// Enum of all wiki possible wiki error types.
+/// See impl of Display and Error
 #[derive(Debug)]
 pub enum WikiError {
     NetworkingError(String),
@@ -56,7 +60,10 @@ pub enum WikiError {
     URLError(String),
 }
 
+impl std::error::Error for WikiError {}
+
 impl std::fmt::Display for WikiError {
+    /// Standard format display for wiki errors
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NetworkingError(msg) => write!(f, "Networking error: {}", msg),
@@ -66,8 +73,15 @@ impl std::fmt::Display for WikiError {
     }
 }
 
-impl std::error::Error for WikiError {}
-
+/// Gets a Page from a title &str
+///
+/// # Arguments
+/// * `title` - The title of the page
+///
+/// # Returns
+///
+/// Ok(Page) - the new wiki page struct
+/// Err(WikiError) - error if wiki parsing/fetching fails
 pub fn page_from_title(title: &str) -> Result<Page, WikiError> {
     debug!("parse_parse_from_title called...");
 
@@ -76,6 +90,16 @@ pub fn page_from_title(title: &str) -> Result<Page, WikiError> {
     return page_from_url(&url);
 }
 
+/// Gets a Page from a url
+///
+/// # Arguments
+///
+/// * `url` the url of the wiki page
+///
+/// # Returns
+///
+/// Ok(Page) - the new wiki page struct
+/// Err(WikiError) - error if wiki parsing/fetching fails
 pub fn page_from_url(url: &str) -> Result<Page, WikiError> {
     debug!("parse_page_from_url called with url: {}", url);
     let client = client::get_client();
@@ -100,14 +124,14 @@ pub fn page_from_url(url: &str) -> Result<Page, WikiError> {
     let document = Html::parse_document(&html_content);
 
     // this wierd selector is what gets the actual body from a page
-    let selector = Selector::parse("div.mw-content-container main#content").unwrap();
+    let selector = Selector::parse("div.mw-content-container main#content").unwrap(); // TODO FIX UNWRAP
 
     match document.select(&selector).next() {
         Some(content) => {
             debug!("Content successfully selected. Processing content...");
 
             let title = url_utils::title_from_url(url);
-
+            // process starting at root elem
             Ok(process_content(content, &title))
         }
         None => {
@@ -119,12 +143,20 @@ pub fn page_from_url(url: &str) -> Result<Page, WikiError> {
     }
 }
 
+/// A URL utility module, primarily for extract and encoding wiki data from urls
 pub mod url_utils {
     use reqwest::{blocking::Client, header::LOCATION};
     use std::sync::Arc;
 
     use super::{client::get_client, WikiError};
 
+    /// Extract a title slug from a url &srt
+    ///
+    /// # Arguments
+    /// * `url` - the url to pull the title from
+    ///
+    /// # Returns
+    /// owned string for the new title
     pub fn title_from_url(url: &str) -> String {
         let title = extract_slug(url)
             .split("_")
@@ -142,6 +174,16 @@ pub mod url_utils {
         }
     }
 
+    /// Resolves a wiki title to its full url
+    ///
+    /// # Arguments
+    ///
+    /// * `title` - the title of the wiki page
+    ///
+    /// # Returns
+    ///
+    /// - Ok(String) - owned wiki url
+    /// - Err(WikiError::NetworkingError) - some network error
     pub fn resolve_wiki_url(title: &str) -> Result<String, WikiError> {
         let client: Arc<Client> = get_client();
 
@@ -176,17 +218,26 @@ fn handle_response(response: reqwest::blocking::Response) -> Result<String, Wiki
         })?)
     } else {
         debug!("Response failed with status: {}", response.status());
-        Err(WikiError::NetworkingError(format!("Failed to fetch page: HTTP {}", response.status())))
+        Err(WikiError::NetworkingError(format!(
+            "Failed to fetch page: HTTP {}",
+            response.status()
+        )))
     }
 }
 
+/// A struct representing an entire wiki page.
+/// From an IR standpoint, this represents a graph node of a semantic network
+/// It's outlinks are the `links` field. This does not contain backlinks, as this
+/// library is built for dynamic traversal
 #[derive(Debug)]
 pub struct Page {
     pub title: String,
     pub links: Vec<HyperLink>,
-    pub content: String
+    pub content: String,
 }
 
+/// A struct representing a hyperlink out of a wiki page, to another.
+/// From an IR standpoint, this represents a graph edge of a semantic network
 #[derive(Debug, Clone)]
 pub struct HyperLink {
     pub title: String,
@@ -224,6 +275,16 @@ fn process_content_recursive(
     }
 }
 
+///Processes a raw wikipedia fetch into a Page
+///
+/// # Arguments
+///
+/// * `element` - root element of wikipedia DOM
+/// * 'page_title` - title of wikipedia page being processed
+///
+/// # Returns
+///
+/// Page struct representing the given wiki page
 pub fn process_content(element: scraper::ElementRef, page_title: &str) -> Page {
     debug!("Processing content element...");
     let mut raw_content = String::new();
@@ -231,7 +292,7 @@ pub fn process_content(element: scraper::ElementRef, page_title: &str) -> Page {
 
     process_content_recursive(element, &mut raw_content, &mut links);
 
-    // clean meta content is actually not a cheap function, 
+    // clean meta content is actually not a cheap function,
     // only wanna call it once here vs inside the recursive one
     let cleaned_content = clean_meta_content(&raw_content);
 
@@ -244,6 +305,15 @@ pub fn process_content(element: scraper::ElementRef, page_title: &str) -> Page {
 
 use regex::Regex;
 
+/// Cleans the wikipedia meta content from a string
+///
+/// # Arguments
+///
+/// * `input` - Input content to clean
+///
+/// # Returns
+///
+/// String cleaned of wikipedia meta content
 pub fn clean_meta_content(input: &str) -> String {
     debug!("Cleaning meta content...");
     let re_whitespace = Regex::new(r"\s+").unwrap();
@@ -262,13 +332,13 @@ pub fn clean_meta_content(input: &str) -> String {
 }
 
 /// Removes non-semantic indicators from document
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `page` - page to clean
-/// 
+///
 /// # Returns
-/// 
+///
 /// A new, owned clean page with no non-semantic indicators
 pub fn clean_document(page: &Page) -> Page {
     let stop_words: Vec<String> = STOP_WORDS.to_vec();
@@ -300,13 +370,13 @@ pub fn clean_document(page: &Page) -> Page {
 }
 
 /// Convert a Page into its vector representation in a word embeddding vector space
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `page` - The page to convert
-/// 
+///
 /// # Returns
-/// 
+///
 /// An owned vector of floats containing ONLY the term-frequencies values
 /// This notably does not contain the IDF information
 pub fn page_to_vec(page: &Page) -> Vec<f64> {
@@ -336,14 +406,14 @@ use rayon::prelude::*;
 use stop_words::STOP_WORDS;
 
 /// The cosine similarity between two vectors
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `vec1` - The first vector
 /// * `vec2` - The second vector
-/// 
+///
 /// # Returns
-/// 
+///
 /// the cosine of the angle between the vectors -> [0-1)
 pub fn cosine_sim(vec1: &Vec<f64>, vec2: &Vec<f64>) -> f64 {
     let dot_product: f64 = vec1
@@ -359,14 +429,14 @@ pub fn cosine_sim(vec1: &Vec<f64>, vec2: &Vec<f64>) -> f64 {
 }
 
 /// Get the similarity of two pages
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `page1` - The first page to check
 /// * `page2` - The second page to check
-/// 
+///
 /// # Returns
-/// 
+///
 /// The document similarity [0-1)
 pub fn get_page_similarity(page1: &Page, page2: &Page) -> f64 {
     let vec1 = page_to_vec(page1);
@@ -384,7 +454,7 @@ pub fn get_page_similarity(page1: &Page, page2: &Page) -> f64 {
 ///
 /// # Returns
 ///
-/// The ARGMAX of the most similar page 
+/// The ARGMAX of the most similar page
 pub fn get_most_similar_page(primary_page: &Page, pages: &Vec<Page>) -> usize {
     // i kinda see why sklearn has this take 2 vectors and return 1 similarity vector now lol
 
