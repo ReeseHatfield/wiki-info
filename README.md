@@ -1,6 +1,20 @@
-# Wiki-Info
 
-A high speed, blocking, wikipedia information retrieval API for rust.
+
+# **Wiki-Info**
+
+<p align="center">
+  <a href="https://github.com/reesehatfield/cirrus">
+    <img src="https://upload.wikimedia.org/wikipedia/en/thumb/8/80/Wikipedia-logo-v2.svg/330px-Wikipedia-logo-v2.svg.png" alt="Wikipedia Logo" width="400" height="370">
+  </a>
+</p>
+
+<h3 align="center"><strong>Wiki-Info</strong></h3>
+
+<p align="center">
+    A high speed, blocking, wikipedia information retrieval API for rust.
+  <br>
+</p>
+
 
 ## Features
 
