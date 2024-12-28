@@ -34,6 +34,10 @@ This could theoretically be added, but would require the traversal of all of wik
 
 Simply run `cargo add wiki-info` to your rust project. See [crate page](https://crates.io/crates/wiki-info) for more details
 
+## Considerations:
+
+If you use this crate, please consider [donating to the Wikimedia Foundation](https://donate.wikimedia.org/wiki/Ways_to_Give)
+
 ## Examples:
 
 Getting a Page from the title
