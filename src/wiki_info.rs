@@ -229,7 +229,7 @@ fn handle_response(response: reqwest::blocking::Response) -> Result<String, Wiki
 /// From an IR standpoint, this represents a graph node of a semantic network
 /// It's outlinks are the `links` field. This does not contain backlinks, as this
 /// library is built for dynamic traversal
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Page {
     pub title: String,
     pub links: Vec<HyperLink>,
@@ -238,7 +238,7 @@ pub struct Page {
 
 /// A struct representing a hyperlink out of a wiki page, to another.
 /// From an IR standpoint, this represents a graph edge of a semantic network
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct HyperLink {
     pub title: String,
     pub outlink: String,
