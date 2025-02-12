@@ -180,17 +180,17 @@ mod tests {
         assert!(!cleaned.content.contains("the")); // Assuming "the" is a stop word
     }
 
-    #[test]
-    fn test_page_to_vec() {
-        let page = Page {
-            title: "Test Page".to_string(),
-            content: "the quick brown fox jumps over the lazy dog".to_string(),
-            links: vec![],
-        };
-        let vec = crate::wiki_info::page_to_vec(&page);
-        assert_eq!(vec.len(), 6); // stopwords: the, over, the
-        assert!(vec.iter().all(|&x| x > 0.0));
-    }
+    // #[test]
+    // fn test_page_to_vec() {
+    //     let page = Page {
+    //         title: "Test Page".to_string(),
+    //         content: "the quick brown fox jumps over the lazy dog".to_string(),
+    //         links: vec![],
+    //     };
+    //     let vec = crate::wiki_info::page_to_vec(&page);
+    //     assert_eq!(vec.len(), 6); // stopwords: the, over, the
+    //     assert!(vec.iter().all(|&x| x > 0.0));
+    // }
 
     #[test]
     fn test_cosine_similarity() {

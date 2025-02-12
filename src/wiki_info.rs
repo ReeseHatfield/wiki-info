@@ -374,34 +374,33 @@ pub fn clean_document(page: &Page) -> Page {
 /// # Arguments
 ///
 /// * `page` - The page to convert
+/// * `vocab` - shared vocabulary that you want to use
 ///
 /// # Returns
 ///
 /// An owned vector of floats containing ONLY the term-frequencies values
 /// This notably does not contain the IDF information
-pub fn page_to_vec(page: &Page) -> Vec<f64> {
-    debug!("Converting page to vector...");
+/// 
+pub fn page_to_vec(page: &Page, vocab: &HashMap<String, usize>) -> Vec<f64> {
     let content = clean_document(page).content;
-
-    let content_vec: Vec<&str> = content.split_whitespace().collect();
+    let words: Vec<&str> = content.split_whitespace().collect();
 
     let mut word_count = HashMap::new();
-    for &word in &content_vec {
-        *word_count.entry(word).or_insert(0) += 1;
+    for &word in &words {
+        *word_count.entry(word.to_string()).or_insert(0) += 1;
     }
 
-    let total_words = content_vec.len() as f64;
-    let mut term_frequencies = Vec::new();
-    for &word in &content_vec {
-        if let Some(&count) = word_count.get(word) {
-            term_frequencies.push(count as f64 / total_words);
+    let total_words = words.len() as f64;
+    let mut vector = vec![0.0; vocab.len()];
+
+    for (word, &count) in &word_count {
+        if let Some(&index) = vocab.get(word) {
+            vector[index] = count as f64 / total_words;
         }
     }
 
-    debug!("Page converted to vector.");
-    term_frequencies
+    vector
 }
-
 use rayon::prelude::*;
 use stop_words::STOP_WORDS;
 
@@ -439,10 +438,24 @@ pub fn cosine_sim(vec1: &Vec<f64>, vec2: &Vec<f64>) -> f64 {
 ///
 /// The document similarity [0-1)
 pub fn get_page_similarity(page1: &Page, page2: &Page) -> f64 {
-    let vec1 = page_to_vec(page1);
-    let vec2 = page_to_vec(page2);
+    let mut vocab = HashMap::new();
 
-    return cosine_sim(&vec1, &vec2);
+    // need shared vocab now
+    let mut vocab_len = 0;
+    for page in &[page1, page2] {
+        let content = clean_document(page).content;
+
+        for word in content.split_whitespace() {
+            vocab_len = vocab.len();
+
+            vocab.entry(word.to_string()).or_insert(vocab_len);
+        }
+    }
+
+    let vec1 = page_to_vec(page1, &vocab);
+    let vec2 = page_to_vec(page2, &vocab);
+
+    cosine_sim(&vec1, &vec2)
 }
 
 /// Get the most similar page from a set of pages
@@ -456,15 +469,28 @@ pub fn get_page_similarity(page1: &Page, page2: &Page) -> f64 {
 ///
 /// The ARGMAX of the most similar page
 pub fn get_most_similar_page(primary_page: &Page, pages: &Vec<Page>) -> usize {
-    // i kinda see why sklearn has this take 2 vectors and return 1 similarity vector now lol
+    let mut vocab = HashMap::new();
 
-    let primary_vec = page_to_vec(&primary_page);
+
+    let mut vocab_len = 0;
+    // Build shared vocabulary from primary_page and all comparison pages
+    for page in std::iter::once(primary_page).chain(pages.iter()) {
+        let content = clean_document(page).content;
+
+        for word in content.split_whitespace() {
+            vocab_len = vocab.len();
+            vocab.entry(word.to_string()).or_insert(vocab_len);
+        }
+    }
+
+    let primary_vec = page_to_vec(primary_page, &vocab);
 
     let mut most_similar_index: usize = 0;
-    let mut best_similarity: f64 = 0.0;
+    let mut best_similarity: f64 = -1.0; // start at most dissimilar
 
-    for page_index in 0..pages.len() {
-        let cur_sim = cosine_sim(&primary_vec, &page_to_vec(&pages[page_index]));
+    for (page_index, page) in pages.iter().enumerate() {
+        let cur_vec = page_to_vec(page, &vocab);
+        let cur_sim = cosine_sim(&primary_vec, &cur_vec);
 
         if cur_sim > best_similarity {
             best_similarity = cur_sim;
@@ -472,5 +498,5 @@ pub fn get_most_similar_page(primary_page: &Page, pages: &Vec<Page>) -> usize {
         }
     }
 
-    return most_similar_index;
+    most_similar_index
 }
