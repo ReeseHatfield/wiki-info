@@ -3,7 +3,7 @@
 # **Wiki-Info**
 
 <p align="center">
-  <a href="https://github.com/reesehatfield/cirrus">
+  <a href="https://github.com/reesehatfield/wiki-info">
     <img src="https://upload.wikimedia.org/wikipedia/en/thumb/8/80/Wikipedia-logo-v2.svg/330px-Wikipedia-logo-v2.svg.png" alt="Wikipedia Logo" width="400" height="370">
   </a>
 </p>
